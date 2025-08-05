@@ -266,4 +266,12 @@ if __name__ == "__main__":
         css=custom_css,
     )
 
-    iface.launch(debug=True)
+    # Get port from environment variable (for Railway)
+    port = int(os.environ.get("PORT", 7860))
+    
+    iface.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        debug=False,
+        share=False
+    )
