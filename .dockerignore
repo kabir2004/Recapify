@@ -1,50 +1,39 @@
-# Virtual environment
-.venv/
-venv/
-env/
+# Git
+.git
+.gitignore
 
-# Python cache
-__pycache__/
+# Python
+__pycache__
 *.pyc
 *.pyo
 *.pyd
 .Python
-*.so
-
-# Git
-.git/
-.gitignore
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.venv
+.env
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
+.vscode
+.idea
 
 # Temporary files
 *.tmp
-*.temp
+*.log
+output.txt
+transcript.txt
+*_converted.wav
 
-# Local development
-.env
-.env.local
+# Whisper.cpp (will be built in container)
+whisper.cpp/
 
 # Documentation
+README.md
 *.md
-LICENSE
 
-# Test files
-test_*
-*_test.py
-
-# Build artifacts
-build/
-dist/
-*.egg-info/ 
+# Scripts
+run_meeting_summarizer.sh
+EOF < /dev/null

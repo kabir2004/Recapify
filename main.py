@@ -4,7 +4,7 @@ import gradio as gr
 import requests
 import json
 
-OLLAMA_SERVER_URL = "http://localhost:11434"  # Replace this with your actual Ollama server URL if different
+OLLAMA_SERVER_URL = os.environ.get("OLLAMA_SERVER_URL", "http://localhost:11434")  # Use env var or default
 WHISPER_MODEL_DIR = "./whisper.cpp/models"  # Directory where whisper models are stored
 
 
@@ -15,15 +15,18 @@ def get_available_models() -> list[str]:
     Returns:
         A list of model names available on the Ollama server.
     """
-    response = requests.get(f"{OLLAMA_SERVER_URL}/api/tags")
-    if response.status_code == 200:
-        models = response.json()["models"]
-        llm_model_names = [model["model"] for model in models]  # Extract model names
-        return llm_model_names
-    else:
-        raise Exception(
-            f"Failed to retrieve models from Ollama server: {response.text}"
-        )
+    try:
+        response = requests.get(f"{OLLAMA_SERVER_URL}/api/tags", timeout=10)
+        if response.status_code == 200:
+            models = response.json()["models"]
+            llm_model_names = [model["model"] for model in models]  # Extract model names
+            return llm_model_names
+        else:
+            print(f"Warning: Failed to retrieve models from Ollama server: {response.text}")
+            return ["ollama-not-available"]
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: Cannot connect to Ollama server at {OLLAMA_SERVER_URL}: {e}")
+        return ["ollama-not-available"]
 
 
 def get_available_whisper_models() -> list[str]:
@@ -66,6 +69,24 @@ def summarize_with_model(llm_model_name: str, context: str, text: str) -> str:
     Returns:
         str: The generated summary text from the model.
     """
+    # Check if Ollama is not available
+    if llm_model_name == "ollama-not-available":
+        return f"""❌ Ollama Service Unavailable
+
+This deployment cannot connect to an Ollama server for AI summarization.
+
+📝 **Raw Transcript Available**: You can still download the full transcript below.
+
+🔧 **To enable AI summarization**:
+1. Deploy your own Ollama server
+2. Set the OLLAMA_SERVER_URL environment variable
+3. Redeploy this application
+
+**Context provided**: {context if context else 'None'}
+
+**Transcript preview** (first 500 characters):
+{text[:500]}{'...' if len(text) > 500 else ''}"""
+
     prompt = f"""You are given a transcript from a meeting, along with some optional context.
     
     Context: {context if context else 'No additional context provided.'}
@@ -79,32 +100,33 @@ def summarize_with_model(llm_model_name: str, context: str, text: str) -> str:
     headers = {"Content-Type": "application/json"}
     data = {"model": llm_model_name, "prompt": prompt}
 
-    response = requests.post(
-        f"{OLLAMA_SERVER_URL}/api/generate", json=data, headers=headers, stream=True
-    )
-
-    if response.status_code == 200:
-        full_response = ""
-        try:
-            # Process the streaming response line by line
-            for line in response.iter_lines():
-                if line:
-                    # Decode each line and parse it as a JSON object
-                    decoded_line = line.decode("utf-8")
-                    json_line = json.loads(decoded_line)
-                    # Extract the "response" part from each JSON object
-                    full_response += json_line.get("response", "")
-                    # If "done" is True, break the loop
-                    if json_line.get("done", False):
-                        break
-            return full_response
-        except json.JSONDecodeError:
-            print("Error: Response contains invalid JSON data.")
-            return f"Failed to parse the response from the server. Raw response: {response.text}"
-    else:
-        raise Exception(
-            f"Failed to summarize with model {llm_model_name}: {response.text}"
+    try:
+        response = requests.post(
+            f"{OLLAMA_SERVER_URL}/api/generate", json=data, headers=headers, stream=True, timeout=60
         )
+
+        if response.status_code == 200:
+            full_response = ""
+            try:
+                # Process the streaming response line by line
+                for line in response.iter_lines():
+                    if line:
+                        # Decode each line and parse it as a JSON object
+                        decoded_line = line.decode("utf-8")
+                        json_line = json.loads(decoded_line)
+                        # Extract the "response" part from each JSON object
+                        full_response += json_line.get("response", "")
+                        # If "done" is True, break the loop
+                        if json_line.get("done", False):
+                            break
+                return full_response
+            except json.JSONDecodeError:
+                print("Error: Response contains invalid JSON data.")
+                return f"Failed to parse the response from the server. Raw response: {response.text}"
+        else:
+            return f"❌ Error: Failed to summarize with model {llm_model_name}. Server returned: {response.text}\n\nTranscript is still available for download below."
+    except requests.exceptions.RequestException as e:
+        return f"❌ Error: Cannot connect to Ollama server: {e}\n\nTranscript is still available for download below."
 
 
 def preprocess_audio_file(audio_file_path: str) -> str:
@@ -273,5 +295,7 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         debug=False,
-        share=False
+        share=False,
+        show_error=True,
+        quiet=False
     )
