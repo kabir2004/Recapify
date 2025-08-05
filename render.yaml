@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: recapify
+    runtime: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      chmod +x run_meeting_summarizer.sh
+      ./run_meeting_summarizer.sh
+    startCommand: python main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0 
