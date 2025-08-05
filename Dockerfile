@@ -1,64 +1,74 @@
-# Use multi-stage build for efficiency
+# Multi-stage build for Railway deployment
 FROM python:3.11-slim as builder
 
+# Set environment for non-interactive builds
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     cmake \
     build-essential \
     wget \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Build whisper.cpp in builder stage
+# Build whisper.cpp
 WORKDIR /build
 RUN git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git && \
     cd whisper.cpp && \
-    make -j$(nproc) && \
-    # Download small model only
-    ./models/download-ggml-model.sh small
+    make -j2 && \
+    ls -la . && \
+    # Check if build directory exists, if not create it
+    test -d build/bin || (echo "Creating build/bin directory" && mkdir -p build/bin && cp main build/bin/whisper-cli) && \
+    # Verify binary exists
+    test -f build/bin/whisper-cli || test -f main && \
+    # If whisper-cli doesn't exist but main does, copy it
+    (test -f build/bin/whisper-cli || cp main build/bin/whisper-cli) && \
+    # Download model
+    bash ./models/download-ggml-model.sh small
 
-# Final stage
+# Production stage
 FROM python:3.11-slim
 
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PORT=8080
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Install Python requirements
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy whisper.cpp binaries and models from builder
+# Create directories
+RUN mkdir -p whisper.cpp/build/bin whisper.cpp/models
+
+# Copy whisper binary (try both possible locations)
 COPY --from=builder /build/whisper.cpp/build/bin/whisper-cli ./whisper.cpp/build/bin/whisper-cli
-COPY --from=builder /build/whisper.cpp/models/ggml-small.bin ./whisper.cpp/models/ggml-small.bin
+COPY --from=builder /build/whisper.cpp/models/ggml-small.bin ./whisper.cpp/models/
 
-# Make whisper-cli executable
+# Set permissions
 RUN chmod +x ./whisper.cpp/build/bin/whisper-cli
 
-# Copy application code
+# Copy app
 COPY main.py .
 
-# Create necessary directories and files
-RUN mkdir -p whisper.cpp/models && \
-    touch transcript.txt
+# Create transcript file
+RUN touch transcript.txt
 
-# Set environment variables for Railway
-ENV PYTHONUNBUFFERED=1
-ENV PORT=7860
+# Expose port
+EXPOSE $PORT
 
-# Expose port (Railway will override this)
-EXPOSE 7860
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-7860}/ || exit 1
-
-# Run the app
+# Run app
 CMD ["python", "main.py"] 
