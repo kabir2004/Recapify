@@ -10,44 +10,19 @@ WHISPER_MODEL_DIR = "./whisper.cpp/models"  # Directory where whisper models are
 
 def get_available_models() -> list[str]:
     """
-    Retrieves a list of all available models from the Ollama server and extracts
-    the model names.
+    Retrieves a list of all available models from the Ollama server and extracts the model names.
 
     Returns:
         A list of model names available on the Ollama server.
-        
-    Raises:
-        Exception: If Ollama server is not accessible or returns an error.
     """
-    try:
-        response = requests.get(f"{OLLAMA_SERVER_URL}/api/tags", timeout=10)
-        if response.status_code == 200:
-            models = response.json()["models"]
-            llm_model_names = [model["model"] for model in models]
-            if not llm_model_names:
-                raise Exception(
-                    "No models found on Ollama server. "
-                    "Please install at least one model."
-                )
-            return llm_model_names
-        else:
-            raise Exception(
-                f"Failed to retrieve models from Ollama server: {response.text}"
-            )
-    except requests.exceptions.ConnectionError:
+    response = requests.get(f"{OLLAMA_SERVER_URL}/api/tags")
+    if response.status_code == 200:
+        models = response.json()["models"]
+        llm_model_names = [model["model"] for model in models]  # Extract model names
+        return llm_model_names
+    else:
         raise Exception(
-            f"Could not connect to Ollama server at {OLLAMA_SERVER_URL}. "
-            "Please ensure Ollama is running and accessible."
-        )
-    except requests.exceptions.Timeout:
-        raise Exception(
-            f"Timeout connecting to Ollama server at {OLLAMA_SERVER_URL}. "
-            "Please check if Ollama is running."
-        )
-    except requests.exceptions.RequestException as e:
-        raise Exception(
-            f"Error connecting to Ollama server: {e}. "
-            "Please ensure Ollama is properly configured."
+            f"Failed to retrieve models from Ollama server: {response.text}"
         )
 
 
@@ -291,4 +266,4 @@ if __name__ == "__main__":
         css=custom_css,
     )
 
-    iface.launch(debug=True, server_name="0.0.0.0", server_port=10000)
+    iface.launch(debug=True)
